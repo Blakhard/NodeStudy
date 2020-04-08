@@ -1,5 +1,5 @@
 # NodeStudy
-Simple messege broker build on node.
+Simple message broker build on node.
 
 Dependencies: 
 node - 13.12*
