@@ -1,0 +1,17 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "rules": {
+    "no-console": 1,
+    "max-len": [2, 120, 4, {"ignoreUrls": true}],
+    "@typescript-eslint/no-non-null-assertion": 0,
+    "no-debugger": 1,
+    "semi": [1, "always"]
+  }
+}
