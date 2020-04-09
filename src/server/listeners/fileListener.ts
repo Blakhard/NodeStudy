@@ -5,12 +5,12 @@ import { Message } from "../../lib/interfaces";
 
 import { errLogger, EMIT_TYPES } from '../../lib/utils';
 
-//There are 3 blokers 
+//There are 3 blockers 
 // FILE_READING used to confirm that nothing will be added to the file while Reader class working
 let FILE_READING = false;
-// RECONECTION_TIMEOUT is used to reducer the reconections (depends on task how to set)
-let RECONECTION_TIMEOUT = 1;
-// TRY_TO_SAVE_FROM_FILE blocker for Reader class to remove unnedde actions
+// RECONNECTION_TIMEOUT is used to reducer the reconnection attempts (depends on task how to set)
+let RECONNECTION_TIMEOUT = 1;
+// TRY_TO_SAVE_FROM_FILE blocker for Reader class to remove unneeded actions
 let TRY_TO_SAVE_FROM_FILE = false;
 
 const errCheck = (err: Error | null): boolean => {
@@ -21,17 +21,17 @@ const errCheck = (err: Error | null): boolean => {
   return false;
 };
 
-const updateReconectionTimeout = (): void => {
-  const maxTimeout = Number(process.env.RECONECTION_MAX_TIMEOUT);
-  RECONECTION_TIMEOUT = RECONECTION_TIMEOUT < maxTimeout ? 
-    RECONECTION_TIMEOUT + 1 : 
+const updateReconnectionTimeout = (): void => {
+  const maxTimeout = Number(process.env.RECONNECTION_MAX_TIMEOUT);
+  RECONNECTION_TIMEOUT = RECONNECTION_TIMEOUT < maxTimeout ? 
+    RECONNECTION_TIMEOUT + 1 : 
     maxTimeout;
 };
 
 class Reader {
 
   fetchSaveFromFile = async (message: Message[], server: http.Server, fd: number): Promise<void> => {
-    const timeout = 1000 * RECONECTION_TIMEOUT;
+    const timeout = 1000 * RECONNECTION_TIMEOUT;
     try {
       const response = await fetch(process.env.BACKEND_HOST!, {
         method: 'POST',
@@ -39,8 +39,8 @@ class Reader {
         body: JSON.stringify(message),
       });
       if (!response.ok) {
-        errLogger(`Backend service accesible on ${new Date()}, but have issues with saving data.`);
-        updateReconectionTimeout();
+        errLogger(`Backend service accessible on ${new Date()}, but have issues with saving data.`);
+        updateReconnectionTimeout();
         FILE_READING = false;
         setTimeout(() => this.read(server, fd)(), timeout);
       } else {
@@ -48,12 +48,12 @@ class Reader {
           if (errCheck(err)) return;
           TRY_TO_SAVE_FROM_FILE = false;
           FILE_READING = false;
-          RECONECTION_TIMEOUT = 1;
+          RECONNECTION_TIMEOUT = 1;
         });
       }
     } catch (error) {
-      errLogger(`Backend service unaccesible on ${new Date()}`);
-      updateReconectionTimeout();
+      errLogger(`Backend service unaccessible on ${new Date()}`);
+      updateReconnectionTimeout();
       FILE_READING = false;
       setTimeout(() => this.read(server, fd)(), timeout);
     }
@@ -87,7 +87,7 @@ class Reader {
 
 class Writer {
   write = async (fd: number, message: Message[], server: http.Server): Promise<void> => {
-    const timeout = 1000 * RECONECTION_TIMEOUT;
+    const timeout = 1000 * RECONNECTION_TIMEOUT;
     if (!FILE_READING) {
       let toSave = '';
       message.forEach(m => toSave = toSave + JSON.stringify(m));
@@ -103,36 +103,43 @@ class Writer {
     }
   };
   fetcher = async (message: Message[], fd: number, server: http.Server): Promise<void> => {
-    try {
-      const response = await fetch(process.env.BACKEND_HOST!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(message),
-      });
-      if (!response.ok) {
-        errLogger(`Backend service accesible on ${new Date()}, but have issues with saving data.`);
-        updateReconectionTimeout();
+    if (!TRY_TO_SAVE_FROM_FILE) {
+      try {
+        const response = await fetch(process.env.BACKEND_HOST!, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(message),
+        });
+        if (!response.ok) {
+          errLogger(`Backend service accessible on ${new Date()}, but have issues with saving data.`);
+          updateReconnectionTimeout();
+          this.write(fd, message, server);
+        } else {
+          RECONNECTION_TIMEOUT = 1;
+        }
+      } catch (error) {
+        errLogger(`Backend service unaccessible on ${new Date()}`);
+        updateReconnectionTimeout();
         this.write(fd, message, server);
-      } else {
-        RECONECTION_TIMEOUT = 1;
       }
-    } catch (error) {
-      errLogger(`Backend service unaccesible on ${new Date()}`);
-      updateReconectionTimeout();
+    } else {
       this.write(fd, message, server);
     }
+    
   };
 }
 const writer = new Writer();
 const reader = new Reader();
 
-const writeListner = (fd: number, server: http.Server) => (message: Message[]): void => {
+const writeListener = (fd: number, server: http.Server) => (message: Message[]): void => {
   writer.fetcher(message, fd, server);
 };
-const readListner = (fd: number, server: http.Server) => (): void => {
+const readListener = (fd: number, server: http.Server) => (): void => {
+  // !TRY_TO_SAVE_FROM_FILE used for reduce number of streams
+  // if it already trying to read the file and send data, we should not start another stream
   if (!TRY_TO_SAVE_FROM_FILE) {
     reader.read(server, fd)();
   }
 };
 
-export { writeListner, readListner };
+export { writeListener, readListener };

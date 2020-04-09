@@ -3,7 +3,7 @@ dotenv.config();
 
 import fs from 'fs';
 
-import serverInit from './server';
+import { serverInit } from './server';
 import { allowedList, EMIT_TYPES } from './lib/utils';
 import { AllowedIPs, FileInit } from './lib/interfaces';
 import { errLogger, logger } from './lib/utils';
@@ -13,10 +13,10 @@ const fileInit = (): FileInit => {
 
   const data = {} as FileInit;
 
-  if (fs.existsSync('./log')) {
+  if (fs.existsSync(process.env.SAVE_FILE_NAME!)) {
     try {
-      const messages = fs.readFileSync('./log', { encoding: 'utf-8' });
-      fs.truncateSync('./log');
+      const messages = fs.readFileSync(process.env.SAVE_FILE_NAME!, { encoding: 'utf-8' });
+      fs.truncateSync(process.env.SAVE_FILE_NAME!);
       const jsonString = messages.length > 0 ? 
         '[' + messages.split('}').filter(s => Boolean(s)).join('},') + '}]' :
         '[]';
@@ -25,19 +25,19 @@ const fileInit = (): FileInit => {
       errLogger(`We lost some data cause of ${err}`);
     }
   }
-  data.fd = fs.openSync('./log', 'a+');
+  data.fd = fs.openSync(process.env.SAVE_FILE_NAME!, 'a+');
   return data;
 };
 
 const init = async (): Promise<void> => {
-  // Here resolve allowed IPs list for immideate closing connection for unsuported.
+  // Here resolve allowed IPs list for immediate closing connection for unsupported ips.
   // this take time but, think will help to filter some spam
-  // can be change for anything: config, request to servise, process params 
+  // Request can be change for anything: config, request to service, process params 
   // but if you don't want just use false
   const allowedIps: AllowedIPs | false = await Promise.resolve(allowedList);
   logger(`Got AllowedIPs`);
-  // Also here we initialize our local log file for saving any holded messages
-  logger('Inizialize FS');
+  // Also here we initialize our local log file for saving any hold messages
+  logger('Initialize FS');
   const fsInit = fileInit();
   logger('FS Ready');
 
@@ -46,7 +46,7 @@ const init = async (): Promise<void> => {
     logger(`Start server on ${process.env.APP_PORT}`);
   });
 
-  // if we have some saved data we emit it to saveListner to work on it
+  // if we have some saved data we emit it to saveListener to work on it
   const { currentData } = fsInit;
   if (currentData && Array.isArray(currentData) && currentData.length > 0) {
     server.emit(EMIT_TYPES.FETCH_OR_WRIGHT_LOCAL, currentData);
